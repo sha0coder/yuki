@@ -130,6 +130,8 @@ Response:
 * "file filename" : check which type of file is
 * "binwalk filename" : check which formats contains the binary
 * "r2 -q -c 'something'" : static reverse ingeneering a binary
+* "curl -sk 'url'" : connect to a website
+* "wget 'url'" : download a web resource
 
 ''' # system prompt inspired on decai.r2.js
 

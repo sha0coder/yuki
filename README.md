@@ -11,4 +11,12 @@ launch from a folder and yuki will never access outside ... in theory.
 
 - voice prompt
 - voice confirmation
+- AI coments with a nice voice
+- only english language for now
+
+## Thanks
+
+system prompt inspired on radare2/r2ai decai AI decompiler and agentic reverser
+
+
 
