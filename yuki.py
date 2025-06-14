@@ -427,11 +427,11 @@ def do_edit(file, line, code):
 
     line = int(line)
     if not os.path.isfile(file):
-        add(file, code)
+        do_add(file, code)
     blob = open(file,'r').read().strip()
     blob = blob.split('\n')
     if line > len(blob):
-        add(file,code)
+        do_add(file,code)
         context += 'edit: doing add instead of edit\n'
         return
     for i in range(len(blob)):
