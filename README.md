@@ -1,4 +1,4 @@
-# Yuki - offline cpu based AI Terminal and Coder Agent
+# Yuki - offline cpu Terminal and Coder Agent
 
 - STT whisper turbo model
 - TTS mozilla tts
