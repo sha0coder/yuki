@@ -1,4 +1,4 @@
-# Yuki - offline AI Terminal and Coder Agent
+# Yuki - offline non-gpu AI Terminal and Coder Agent
 
 - STT whisper turbo model
 - TTS mozilla tts
@@ -6,13 +6,16 @@
 
 
 cp yuki.py /somewhere/
+yuki will not go outisde the folder, and will use relative paths.
 
-launch from a folder and yuki will never access outside ... in theory.
+
 
 - voice prompt
 - voice confirmation
 - AI coments with a nice voice
 - only english language for now
+- sanitizer
+- go-ahead mode to launch commands with no confirmation, use python3 yuki.py go
 
 ## Thanks
 

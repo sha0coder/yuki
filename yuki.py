@@ -1,6 +1,8 @@
 '''
-    coder agentic AI 100% offline
-    voice instructions + system prompt -> stt -> AI -> json -> parser -> python function or cmd
+    coder agentic AI 100% offline and cpu based.
+
+    voice instructions + context and system prompt -> stt -> AI -> json -> parser -> python function or cmd -> tts
+
 '''
 
 
@@ -46,7 +48,8 @@ MODELS = [
 ENERGY_THRESHOLD = 0.02  # Umbral de energía para detectar voz
 SILENCE_DURATION = 4  # Segundos de silencio antes de detener la grabación
 CHUNK_DURATION = 0.1  # Duración de cada fragmento de audio (100 ms)
-MAX_DURATION = 40  # Duración máxima de grabación (segundos)
+MAX_DURATION = 50  # Duración máxima de grabación (segundos)
+OLLAMA_TOKEN_LIMIT = 2048
 
 model = whisper.load_model(WHISPER_MODEL, device="cpu")
 context = ''
@@ -59,7 +62,7 @@ You are Yuki, a linux terminal, and software engineer.
 You are going to use function calling to execute yuki commands in order to create the project structure and also to create the code that satisfy the User Request.
 Note that the user input come from speech to text and some words could not be exactly what it should be.
 
-Discover the files of the project, if there are files view the contect, and if are empty, fill its content, if dont exist create them.
+Dont repeat imports or functions, check first folder structure, read the readme or create it, and start implementing or fixing the code.
 
 IMPORTANT: Dont return multiple jsons, do things step by step, return only the next step, dont overthink.
 
@@ -70,7 +73,7 @@ Respond ONLY using 1 valid JSON without using markdown. You are designed to proc
 1. Analyze the user input to determine if it requires invoking a local function or just returning a direct response.
 2. If it requires a function call:
  - Use the key "action": "yuki".
- - Provide the "command" as a string.
+ - Provide one "command" as a string, dont concatenate multile commands.
  - Optionally, provide a "description" to summarize your intent.
 3. If we think we know the answer and no function call is required:
  - Use the key "action": "reply".
@@ -87,6 +90,10 @@ Respond ONLY using 1 valid JSON without using markdown. You are designed to proc
 6. if you need to add extra code at the bottom of the file or in an empty file, use add.
  - use "action": "add"
  - add code in "code": "put code here"
+ - indicate the filepath in "file": "relative/filepath"
+7. if you need to delete lines of code:
+ - use "action": "del"
+ - indicate the line in "line": "line number here"
  - indicate the filepath in "file": "relative/filepath"
 
 ## Here is an example:
@@ -133,12 +140,17 @@ Response:
 * "curl -sk 'url' | lynx -stdin -dump" : connect to a website, fetch the html and parse it to text
 * "wget 'url'" : download a web resource
 * "git" : use git commands if you need it but dont push
+* 'find . -ls' : check the folder structure
 
 ''' # system prompt inspired on decai.r2.js
 
 def unimplemented():
     print('unimplemented!')
     exit(1)
+
+def toomuchtokens(text):
+    words = text.split()
+    return int(len(words) * 1.3) >= OLLAMA_TOKEN_LIMIT  # 1 token ≈ 1.3 palabras
 
 
 def colorcat(filename):
@@ -153,7 +165,7 @@ def colorcat(filename):
     except UnicodeDecodeError:
         context += f'error: file {filename} cannot be decoded as utf-8\n'
     except Exception as e:
-        context += f'error: {str(e)}'
+        context += f'error: {str(e)}\n'
 
 def is_speech(audio_chunk, threshold=ENERGY_THRESHOLD):
     return np.max(np.abs(audio_chunk)) > threshold
@@ -261,7 +273,6 @@ def confirm(cmd):
     global context
 
     if GO_AHEAD:
-        context += '**user**\ngo ahead!\n'
         return True
 
     for i in range(3):
@@ -282,15 +293,25 @@ def confirm(cmd):
 
 
 def do_cd(cmd):
-    path = cmd.split(' ')[1]
+    global context
+    spl = cmd.split(' ')
+    if len(spl) != 2:
+        context += 'err: for doing cd use 1 param'
+        return
+
+    path = spl[1] 
+    if path.startswith('/') or path.startswith('..'):
+        context += 'error: the cd path has to be relative to current path\n'
+        return
+
     if os.path.isdir(path):
         try:
             os.chdir(path)
             return True
-        except:
-            yuki_tts('permission denied')
+        except Exception as e:
+            context += f'error: cd path is denied {str(e)}\n'
     else:
-        yuki_tts('sorry, cannot access to a path that is not a folder.')
+        context += 'error bad cd path\n'
     return False
 
 
@@ -328,14 +349,22 @@ def test():
 def sanitize(cmd):
     cmd = cmd.strip().replace('`','').replace('$(','')
     spl = cmd.split(' ')
-    for s in spl:
+    for i in range(len(spl)):
+        s = spl[i]
         if s == 'rm':
             print(f'rm blocked! cmd: {cmd}')
             return None
-        elif s == 'cd':
-            print(f'cd blocked! cmd: {cmd}')
+        elif 'yuki' in s:
+            print(f'accesing yuki: {cmd}')
             return None
-        elif s.startswith('/'):
+        elif s == 'cd':
+            if len(spl) != 2:
+                print('cd with no params blocked')
+                return None
+            if spl[i+1].startswith('/') or spl[i+1].startswith('..'):
+                print(f'cd blocked! cmd: {cmd}')
+                return None
+        elif s.startswith('/') or s.startswith('..'):
             print(f'absolute path blocked! cmd: {cmd}')
             return None
     return cmd
@@ -348,7 +377,30 @@ def lcode(code):
     return code2
 
 
-def edit(file, line, code):
+def do_del(file, line):
+    global context
+
+    if not os.path.isfile(file):
+        context += f'file {file} doesnt exist or is not a file\n'
+        return
+
+    try:
+        code = open(file,'r').read().strip().split('\n')
+    except Exception as e:
+        context += f'error opening {file}  err: {str(e)}\n'
+        return
+
+    try:
+        del code[line-1]
+    except:
+        context += 'erorr, the line number to delete is outside the code.\n'
+        return
+
+    open(file,'w').write('\n'.join(code))
+
+
+
+def do_edit(file, line, code):
     global context
 
     if file.startswith('..') or file.startswith('/'):
@@ -379,7 +431,7 @@ def edit(file, line, code):
     context += f'file: {file}\n'
     context += lcode(code) + '#eof\n\n'
 
-def add(file, code):
+def do_add(file, code):
     if file.startswith('..') or file.startswith('/'):
         print(f'alert: bloqued this add: {file}')
         return
@@ -412,8 +464,14 @@ def main():
     yuki_tts('Hello, what do you want to do?')
     request = yuki_stt()
     print('user> '+request)
+    #open('prompt.txt','w').write(request)
     context += '**user request**\n' + request + '\n'
     while True:
+        if toomuchtokens(context):
+            off = context.find('\n',3)
+            context = request + context[off:]
+            print('Context fixed')
+
         step = AI(context).strip()
         step = clean_json(step)
         #start_off = step.find('{')
@@ -436,25 +494,36 @@ def main():
             continue
         if step['action'] == 'reply':
             yuki_tts(step['response'])
+            instructions = yuki_stt()
+            context += 'instructions:\n' + instructions + '\n'
         elif step['action'] == 'edit':
             if 'line' in step and 'code' in step and 'file' in step:
                 line = int(step['line'])
                 code = step['code']
                 file = step['file']
-                edit(file, line, code)
+                do_edit(file, line, code)
             else:
                 context += '\njson is ok but there are missing line or code or file tags\n'
         elif step['action'] == 'add':
             if 'code' in step and 'file' in step:
                 code = step['code']
                 file = step['file']
-                add(file, code)
+                do_add(file, code)
             else:
                 context += '\njson is ok but there are missing code or file tags\n'
+        elif step['action'] == 'del':
+            if 'line' in step and 'file' in step:
+                file = step['file']
+                line = int(step['line'])
+                do_del(file, line)
+            else:
+                context += '\njson is ok but there are missing line or file tags\n'
         elif step['action'] == 'yuki':
             cmd = step['command']
             if cmd == 'edit':
                 context += '\ndont use the edit command because doesnt exist, use the edit action instead.\n'
+            elif cmd.startswith('cd'):
+                do_cd(cmd)
             else:
                 cmd = sanitize(cmd)
                 if cmd:
