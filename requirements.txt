@@ -1,0 +1,4 @@
+openai-whisper
+ollama
+numpy==1.26.4
+jupyterlab_pygments
