@@ -24,10 +24,22 @@ from pygments import highlight
 from pygments.lexers import get_lexer_for_filename
 from pygments.formatters import TerminalFormatter
 
+
+print('loading ...')
 logging.disable(logging.CRITICAL)
 warnings.filterwarnings("ignore")
 logging.getLogger().setLevel(logging.ERROR)
 
+
+if len(sys.argv) < 2:
+    print('USAGE: ')
+    print('\tpython3 yuki.py [project path] [optional options]')
+    print('\toptions:')
+    print('\t\tgo -> for avoid confirmation')
+    print('\t\tctx -> read context from ctx file')
+    exit()
+
+FOLDER = sys.argv[1]
 if len(sys.argv) > 1 and 'go' in sys.argv:
     GO_AHEAD = True
 else:
@@ -292,26 +304,31 @@ def confirm(cmd):
     exit()
 
 
-def do_cd(cmd):
+def do_cd(cmd, bypass=False):
+    # bypass mode only is triggered at the beginnig to move to project folder.
+
     global context
     spl = cmd.split(' ')
     if len(spl) != 2:
+        print(f'{len(spl)} params {cmd}')
         context += 'err: for doing cd use 1 param'
         return
 
     path = spl[1] 
-    if path.startswith('/') or path.startswith('..'):
+    if not bypass and (path.startswith('/') or path.startswith('..')):
         context += 'error: the cd path has to be relative to current path\n'
         return
 
     if os.path.isdir(path):
         try:
+            #print(f'changing to {path} folder')
             os.chdir(path)
             return True
         except Exception as e:
             context += f'error: cd path is denied {str(e)}\n'
     else:
         context += 'error bad cd path\n'
+    print(context)
     return False
 
 
@@ -461,6 +478,8 @@ def clean_json(data):
 
 def main():
     global context
+    do_cd('cd '+FOLDER, bypass=True)
+    #context += f'the project folder is: {FOLDER}\n'
     yuki_tts('Hello, what do you want to do?')
     request = yuki_stt()
     print('user> '+request)
@@ -523,7 +542,8 @@ def main():
             if cmd == 'edit':
                 context += '\ndont use the edit command because doesnt exist, use the edit action instead.\n'
             elif cmd.startswith('cd'):
-                do_cd(cmd)
+                context += 'doing `cd` is not allowed, use relative paths\n' 
+                #do_cd(cmd)
             else:
                 cmd = sanitize(cmd)
                 if cmd:
