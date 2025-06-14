@@ -132,6 +132,7 @@ Response:
 * "r2 -q -c 'something'" : static reverse ingeneering a binary
 * "curl -sk 'url'" : connect to a website
 * "wget 'url'" : download a web resource
+* "git" : use git commands if you need it but dont push
 
 ''' # system prompt inspired on decai.r2.js
 
@@ -141,20 +142,18 @@ def unimplemented():
 
 
 def colorcat(filename):
+    global context
     try:
         with open(filename, 'r', encoding='utf-8') as file:
             code = file.read()
         lexer = get_lexer_for_filename(filename)
         print(highlight(code, lexer, TerminalFormatter()))
     except FileNotFoundError:
-        print(f"Error: El archivo '{filename}' no se encuentra.", file=sys.stderr)
-        sys.exit(1)
+        context += f'error: file {filename} is not found!\n'
     except UnicodeDecodeError:
-        print(f"Error: No se puede decodificar '{filename}' como texto UTF-8.", file=sys.stderr)
-        sys.exit(1)
+        context += f'error: file {filename} cannot be decoded as utf-8\n'
     except Exception as e:
-        print(f"Error: {str(e)}", file=sys.stderr)
-        sys.exit(1)
+        context += f'error: {str(e)}'
 
 def is_speech(audio_chunk, threshold=ENERGY_THRESHOLD):
     return np.max(np.abs(audio_chunk)) > threshold
@@ -301,15 +300,17 @@ def process_command(cmd):
     context += 'command:\n' + cmd + '\n'
     if confirm(cmd):
         yuki_tts('launching command')
-        proc = subprocess.Popen(cmd, shell=True)
+        proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = proc.communicate()
         context += '**stdout**\n'
         if stdout:
+            stdout = stdout.decode('utf-8', errors='ignore')
             print(stdout)
             context += stdout + '\n---\n'
         else:
             context += 'there is no stdout.\n'
         if stderr:
+            stderr = stderr.decode('utf-8', errors='ignore')
             print('error:\n',stderr)
             context += '**stderr**\n' + stderr + '\n'
         else:
