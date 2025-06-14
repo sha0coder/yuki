@@ -130,7 +130,7 @@ Response:
 * "file filename" : check which type of file is
 * "binwalk filename" : check which formats contains the binary
 * "r2 -q -c 'something'" : static reverse ingeneering a binary
-* "curl -sk 'url'" : connect to a website
+* "curl -sk 'url' | lynx -stdin -dump" : connect to a website, fetch the html and parse it to text
 * "wget 'url'" : download a web resource
 * "git" : use git commands if you need it but dont push
 
@@ -431,6 +431,9 @@ def main():
         if 'description' in step:
             desc = step['description']
             yuki_tts(desc)
+        if 'action' not in step:
+            context += '\nerror: this json answer dont have action!\n'
+            continue
         if step['action'] == 'reply':
             yuki_tts(step['response'])
         elif step['action'] == 'edit':
