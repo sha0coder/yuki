@@ -45,4 +45,7 @@ python3 yuki.py /home/sha0/src/someproject/ go ctx
 system prompt inspired on radare2/r2ai decai AI decompiler and agentic reverser
 
 
+## TODO
+
+- timeout in every command
 

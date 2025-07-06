@@ -2,7 +2,6 @@
     coder agentic AI 100% offline and cpu based.
 
     voice instructions + context and system prompt -> stt -> AI -> json -> parser -> python function or cmd -> tts
-
 '''
 
 
@@ -46,10 +45,17 @@ else:
     GO_AHEAD = False
 
 
-VOICE = True
+if len(sys.argv) > 1 and 'voice' in sys.argv:
+    VOICE = True
+    print('voice enabled')
+else:
+    VOICE = False
+    print('voice disabled')
+
+
 SAMPLERATE = 16000
-VOICE  = 'tts_models/en/ljspeech/vits' #'tts_models/en/vctk/vits'
-MODEL = 'qwen2.5-coder:latest' #'mbenhamd/qwen2.5-7b-instruct-cline-128k-q8_0:latest' #'wizardlm2'  # 'qwen2.5-coder:latest'
+VOICE_MODEL  = 'tts_models/en/ljspeech/vits' #'tts_models/en/vctk/vits'
+MODEL = 'wizardlm2'
 WHISPER_MODEL = 'turbo' #'large-v3-turbo' #tiny" #"turbo"
 MODELS = [
     'qwen2.5-coder:latest',
@@ -240,7 +246,7 @@ def yuki_tts(text):
         #tts = TTS("tts_models/en/ljspeech/tacotron2-DDC", progress_bar=False, gpu=False)  # Voz femenina clara
         #tts = TTS(model_name="tts_models/multilingual/multi-dataset/your_tts", progress_bar=False, gpu=False)
         #tts = TTS("tts_models/en/ljspeech/vits", progress_bar=False, gpu=False) #muy buena
-        tts = TTS(VOICE,  progress_bar=False, gpu=False)
+        tts = TTS(VOICE_MODEL,  progress_bar=False, gpu=False)
         if not tts:
             print('fallo el tts')
             exit()
@@ -253,7 +259,7 @@ def yuki_tts(text):
         audio = np.array(audio, dtype=np.float32)
         sd.play(audio, samplerate=tts.synthesizer.output_sample_rate)
         sd.wait()
-    except:
+    except Exception:
         print('failed -> ', text)
 
 
@@ -272,10 +278,12 @@ def AI(msg):
     ])
     return response['message']['content']
 
-def prompt():
-    p = ['user said:']
+def prompt(msgprompt='Ask (say go to process) => ',gomode=True):
+    p = ['**user request**']
     while True:
-        x = input('Ask (say go to process) => ').strip()
+        x = input(msgprompt).strip()
+        if not gomode:
+            return x
         if x == 'go':
             break
         p.append(x)
@@ -289,18 +297,34 @@ def confirm(cmd):
 
     for i in range(3):
         print(cmd)
-        print('run the command (yes/no/edit)? ')
-        yuki_tts('run the command?')
-        ans = yuki_stt(3).lower()
-        if 'edit' in ans:
-            user = yuki_stt()
+        if VOICE:
+            print('run the command (yes/no/edit)? ')
+            yuki_tts('run the command?')
+            ans = yuki_stt(3).lower()
+        else:
+            ans = prompt('run the command (yes/no/edit)? ', gomode=False).lower()
+
+        print(f'ans: {ans}')
+
+        if 'edit' in ans or ans == 'e':
+            if VOICE:
+                user = yuki_stt()
+            else:
+                user = prompt()
             context += '**user adds this comment**\n' + user + '\n'
-        elif 'yes' in ans:
+        elif 'yes' in ans or ans == 'y':
             return True
-        elif 'no' in ans:
+        elif 'no' in ans or ans == 'n':
             return False
-        yuki_tts('sorry, can you repeat?')
-    yuki_tts('sorry, i didnt understood.')
+        if VOICE:
+            yuki_tts('sorry, can you repeat?')
+        else:
+            print('sorry, can you repeat?')
+
+    if VOICE: 
+        yuki_tts('sorry, i didnt understood.')
+    else:
+        print('sorry, i didnt understood.')
     exit()
 
 
@@ -337,7 +361,10 @@ def process_command(cmd):
     global context
     context += 'command:\n' + cmd + '\n'
     if confirm(cmd):
-        yuki_tts('launching command')
+        if VOICE:
+            yuki_tts('launching command')
+        else:
+            print('launching command')
         proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = proc.communicate()
         context += '**stdout**\n'
@@ -480,8 +507,12 @@ def main():
     global context
     do_cd('cd '+FOLDER, bypass=True)
     #context += f'the project folder is: {FOLDER}\n'
-    yuki_tts('Hello, what do you want to do?')
-    request = yuki_stt()
+    if VOICE:
+        yuki_tts('Hello, what do you want to do?')
+        request = yuki_stt()
+    else:
+        print('Hello, what do you want to do?')
+        request = prompt()
     print('user> '+request)
     #open('prompt.txt','w').write(request)
     context += '**user request**\n' + request + '\n'
@@ -491,7 +522,20 @@ def main():
             context = request + context[off:]
             print('Context fixed')
 
-        step = AI(context).strip()
+        try:
+            step = AI(context).strip()
+        except KeyboardInterrupt:
+            opt = prompt(msgprompt='Give instructions, continue or quit? (i/c/q)', gomode=False).lower()
+            if opt[0] == 'i':
+                context += '**user remarks**\n' + prompt() + '\n'
+                continue
+            elif opt[0] == 'c':
+                continue
+            elif opt[0] == 'q':
+                print('quit.')
+                exit(1)
+            continue
+
         step = clean_json(step)
         #start_off = step.find('{')
         #end_off = step.find('}')+1
@@ -507,14 +551,23 @@ def main():
             continue
         if 'description' in step:
             desc = step['description']
-            yuki_tts(desc)
+            if VOICE:
+                yuki_tts(desc)
+            else:
+                print(desc)
         if 'action' not in step:
             context += '\nerror: this json answer dont have action!\n'
             continue
         if step['action'] == 'reply':
-            yuki_tts(step['response'])
-            instructions = yuki_stt()
+            '''
+            if VOICE:
+                yuki_tts(step['response'])
+                instructions = yuki_stt()
+            else:
+                print(step['response'])
+                instructions = prompt()
             context += 'instructions:\n' + instructions + '\n'
+            '''
         elif step['action'] == 'edit':
             if 'line' in step and 'code' in step and 'file' in step:
                 line = int(step['line'])
